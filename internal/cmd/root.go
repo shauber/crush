@@ -36,6 +36,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug")
 	rootCmd.Flags().BoolP("help", "h", false, "Help")
 	rootCmd.Flags().BoolP("yolo", "y", false, "Automatically accept all permissions (dangerous mode)")
+	rootCmd.Flags().BoolP("sysadmin", "s", false, "Remove all command restrictions (YOLO+ / sysadmin mode - USE WITH EXTREME CAUTION)")
 
 	rootCmd.AddCommand(
 		runCmd,
@@ -74,6 +75,9 @@ crush run "Explain the use of context in Go"
 
 # Run in dangerous mode (auto-accept all permissions)
 crush -y
+
+# Run in sysadmin mode (no command restrictions - EXTREME CAUTION)
+crush --sysadmin
   `,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		app, err := setupAppWithProgressBar(cmd)
@@ -177,6 +181,7 @@ func setupAppWithProgressBar(cmd *cobra.Command) (*app.App, error) {
 func setupApp(cmd *cobra.Command) (*app.App, error) {
 	debug, _ := cmd.Flags().GetBool("debug")
 	yolo, _ := cmd.Flags().GetBool("yolo")
+	sysadmin, _ := cmd.Flags().GetBool("sysadmin")
 	dataDir, _ := cmd.Flags().GetString("data-dir")
 	ctx := cmd.Context()
 
@@ -194,6 +199,7 @@ func setupApp(cmd *cobra.Command) (*app.App, error) {
 		cfg.Permissions = &config.Permissions{}
 	}
 	cfg.Permissions.SkipRequests = yolo
+	cfg.Permissions.SysadminMode = sysadmin
 
 	if err := createDotCrushDir(cfg.Options.DataDirectory); err != nil {
 		return nil, err
