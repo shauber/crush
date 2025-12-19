@@ -331,6 +331,7 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		c.sessions,
 		c.messages,
 		nil,
+		c.cfg,
 	})
 	c.readyWg.Go(func() error {
 		tools, err := c.buildTools(ctx, agent)

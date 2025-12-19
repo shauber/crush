@@ -91,8 +91,9 @@ type sessionAgent struct {
 	disableAutoSummarize bool
 	isYolo               bool
 
-	messageQueue   *csync.Map[string, []SessionAgentCall]
-	activeRequests *csync.Map[string, context.CancelFunc]
+	messageQueue    *csync.Map[string, []SessionAgentCall]
+	activeRequests  *csync.Map[string, context.CancelFunc]
+	healthChecker   *ProviderHealthChecker
 }
 
 type SessionAgentOptions struct {
@@ -106,12 +107,13 @@ type SessionAgentOptions struct {
 	Sessions             session.Service
 	Messages             message.Service
 	Tools                []fantasy.AgentTool
+	ProviderConfig       *config.Config
 }
 
 func NewSessionAgent(
 	opts SessionAgentOptions,
 ) SessionAgent {
-	return &sessionAgent{
+	agent := &sessionAgent{
 		largeModel:           opts.LargeModel,
 		smallModel:           opts.SmallModel,
 		systemPromptPrefix:   opts.SystemPromptPrefix,
@@ -125,6 +127,12 @@ func NewSessionAgent(
 		messageQueue:         csync.NewMap[string, []SessionAgentCall](),
 		activeRequests:       csync.NewMap[string, context.CancelFunc](),
 	}
+	
+	if opts.ProviderConfig != nil {
+		agent.healthChecker = NewProviderHealthChecker(opts.ProviderConfig)
+	}
+	
+	return agent
 }
 
 func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (*fantasy.AgentResult, error) {
@@ -133,6 +141,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (*fantasy
 	}
 	if call.SessionID == "" {
 		return nil, ErrSessionMissing
+	}
+
+	// Validate provider connectivity before processing
+	if a.healthChecker != nil {
+		if err := a.healthChecker.CheckProviderConnectivity(ctx, a.largeModel.ModelCfg.Provider); err != nil {
+			return nil, fmt.Errorf("provider unavailable: %w", err)
+		}
 	}
 
 	// Queue the message if busy
