@@ -28,10 +28,15 @@ func Serve(app *app.App, port int) error {
 	mux.HandleFunc("POST /sessions/{id}/cancel", h.cancelSession)
 	mux.HandleFunc("GET /sessions/{id}/status", h.sessionStatus)
 
+	// Model picker endpoints
+	mux.HandleFunc("GET /models", h.listModels)
+	mux.HandleFunc("GET /providers", h.getProviders)
+	mux.HandleFunc("POST /models", h.setModel)
+
 	// Wrap with CORS and logging
 	handler := corsMiddleware(loggingMiddleware(mux))
 
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	slog.Info("Starting API server", "addr", addr)
 
 	server := &http.Server{

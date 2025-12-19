@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/charmbracelet/crush/internal/app"
+	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/message"
 )
 
@@ -46,6 +47,12 @@ type createSessionRequest struct {
 
 type sendMessageRequest struct {
 	Content string `json:"content"`
+}
+
+type setModelRequest struct {
+	ModelType string `json:"model_type"` // "large" or "small"
+	Model     string `json:"model"`      // model ID
+	Provider  string `json:"provider"`   // provider ID
 }
 
 func toMessageResponse(msg message.Message) messageResponse {
@@ -228,4 +235,70 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
+}
+
+func (h *handlers) listModels(w http.ResponseWriter, r *http.Request) {
+	cfg := h.app.Config()
+	models := map[string]interface{}{
+		"selected": map[string]interface{}{
+			"large": cfg.Models[config.SelectedModelTypeLarge],
+			"small": cfg.Models[config.SelectedModelTypeSmall],
+		},
+		"recent": cfg.RecentModels,
+	}
+	respondJSON(w, http.StatusOK, models)
+}
+
+func (h *handlers) getProviders(w http.ResponseWriter, r *http.Request) {
+	cfg := h.app.Config()
+	providers := make([]map[string]interface{}, 0)
+	for prov := range cfg.Providers.Seq() {
+		provider := map[string]interface{}{
+			"id":      prov.ID,
+			"name":    prov.Name,
+			"type":    prov.Type,
+			"disable": prov.Disable,
+			"models":  prov.Models,
+		}
+		// Remove sensitive data
+		providers = append(providers, provider)
+	}
+	respondJSON(w, http.StatusOK, providers)
+}
+
+func (h *handlers) setModel(w http.ResponseWriter, r *http.Request) {
+	var req setModelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	cfg := h.app.Config()
+	modelType := config.SelectedModelType(req.ModelType)
+	if modelType != config.SelectedModelTypeLarge && modelType != config.SelectedModelTypeSmall {
+		http.Error(w, "Invalid model type", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that the model exists for the provider
+	modelConfig := cfg.GetModel(req.Provider, req.Model)
+	if modelConfig == nil {
+		http.Error(w, "Model not found for provider", http.StatusNotFound)
+		return
+	}
+
+	newModel := config.SelectedModel{
+		Provider: req.Provider,
+		Model:    req.Model,
+	}
+
+	if err := cfg.UpdatePreferredModel(modelType, newModel); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Model updated successfully",
+		"model":   newModel,
+	})
 }

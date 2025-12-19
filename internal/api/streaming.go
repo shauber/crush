@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/charmbracelet/crush/internal/pubsub"
 )
@@ -18,11 +19,14 @@ func (h *handlers) streamSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set SSE headers
+	// Set SSE headers for Safari compatibility
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("Content-Encoding", "identity")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -36,6 +40,10 @@ func (h *handlers) streamSession(w http.ResponseWriter, r *http.Request) {
 	// Send initial connection event
 	fmt.Fprintf(w, "event: connected\ndata: {\"session_id\":\"%s\"}\n\n", sessionID)
 	flusher.Flush()
+	
+	// Send a heartbeat every 15 seconds to keep Safari connection alive
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
 
 	// Stream events
 	for {
@@ -68,6 +76,11 @@ func (h *handlers) streamSession(w http.ResponseWriter, r *http.Request) {
 			})
 
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
+			flusher.Flush()
+
+		case <-ticker.C:
+			// Send heartbeat comment for Safari
+			fmt.Fprintf(w, ":heartbeat\n\n")
 			flusher.Flush()
 		}
 	}
