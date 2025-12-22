@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/crush/internal/tui/components/core"
 	"github.com/charmbracelet/crush/internal/tui/components/dialogs"
 	"github.com/charmbracelet/crush/internal/tui/components/dialogs/claude"
+	"github.com/charmbracelet/crush/internal/tui/components/dialogs/copilot"
 	"github.com/charmbracelet/crush/internal/tui/components/dialogs/hyper"
 	"github.com/charmbracelet/crush/internal/tui/exp/list"
 	"github.com/charmbracelet/crush/internal/tui/styles"
@@ -76,6 +77,10 @@ type modelDialogCmp struct {
 	// Hyper device flow state
 	hyperDeviceFlow     *hyper.DeviceFlow
 	showHyperDeviceFlow bool
+
+	// Copilot device flow state
+	copilotDeviceFlow     *copilot.DeviceFlow
+	showCopilotDeviceFlow bool
 
 	// Claude state
 	claudeAuthMethodChooser     *claude.AuthMethodChooser
@@ -143,6 +148,15 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+	case copilot.DeviceAuthInitiatedMsg, copilot.DeviceFlowErrorMsg:
+		if m.copilotDeviceFlow != nil {
+			u, cmd := m.copilotDeviceFlow.Update(msg)
+			m.copilotDeviceFlow = u.(*copilot.DeviceFlow)
+			return m, cmd
+		}
+		return m, nil
+	case copilot.DeviceFlowCompletedMsg:
+		return m, m.saveOauthTokenAndContinue(msg.Token, true)
 	case claude.ValidationCompletedMsg:
 		var cmds []tea.Cmd
 		u, cmd := m.claudeOAuth2.Update(msg)
@@ -161,9 +175,9 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 		switch {
 		// Handle Hyper device flow keys
 		case key.Matches(msg, key.NewBinding(key.WithKeys("c", "C"))) && m.showHyperDeviceFlow:
-			if m.hyperDeviceFlow != nil {
-				return m, m.hyperDeviceFlow.CopyCode()
-			}
+			return m, m.hyperDeviceFlow.CopyCode()
+		case key.Matches(msg, key.NewBinding(key.WithKeys("c", "C"))) && m.showCopilotDeviceFlow:
+			return m, m.copilotDeviceFlow.CopyCode()
 		case key.Matches(msg, key.NewBinding(key.WithKeys("c", "C"))) && m.showClaudeOAuth2 && m.claudeOAuth2.State == claude.OAuthStateURL:
 			return m, tea.Sequence(
 				tea.SetClipboard(m.claudeOAuth2.URL),
@@ -181,6 +195,9 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 			if m.showHyperDeviceFlow && m.hyperDeviceFlow != nil {
 				return m, m.hyperDeviceFlow.CopyCodeAndOpenURL()
 			}
+			if m.showCopilotDeviceFlow && m.copilotDeviceFlow != nil {
+				return m, m.copilotDeviceFlow.CopyCodeAndOpenURL()
+			}
 			selectedItem := m.modelList.SelectedModel()
 
 			modelType := config.SelectedModelTypeLarge
@@ -193,6 +210,7 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 				m.keyMap.isClaudeOAuthHelp = false
 				m.keyMap.isAPIKeyHelp = true
 				m.showHyperDeviceFlow = false
+				m.showCopilotDeviceFlow = false
 				m.showClaudeAuthMethodChooser = false
 				m.needsAPIKey = true
 				m.selectedModel = selectedItem
@@ -288,6 +306,18 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 				m.hyperDeviceFlow = hyper.NewDeviceFlow()
 				m.hyperDeviceFlow.SetWidth(m.width - 2)
 				return m, m.hyperDeviceFlow.Init()
+			case catwalk.InferenceProviderCopilot:
+				if token, ok := config.Get().ImportCopilot(); ok {
+					m.selectedModel = selectedItem
+					m.selectedModelType = modelType
+					return m, m.saveOauthTokenAndContinue(token, true)
+				}
+				m.showCopilotDeviceFlow = true
+				m.selectedModel = selectedItem
+				m.selectedModelType = modelType
+				m.copilotDeviceFlow = copilot.NewDeviceFlow()
+				m.copilotDeviceFlow.SetWidth(m.width - 2)
+				return m, m.copilotDeviceFlow.Init()
 			}
 			// For other providers, show API key input
 			askForApiKey()
@@ -309,22 +339,26 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 				return m, m.modelList.SetModelType(LargeModelType)
 			}
 		case key.Matches(msg, m.keyMap.Close):
-			if m.showHyperDeviceFlow {
-				// Cancel device flow and go back to model selection
+			switch {
+			case m.showHyperDeviceFlow:
 				if m.hyperDeviceFlow != nil {
 					m.hyperDeviceFlow.Cancel()
 				}
 				m.showHyperDeviceFlow = false
 				m.selectedModel = nil
-			}
-			if m.showClaudeAuthMethodChooser {
+			case m.showCopilotDeviceFlow:
+				if m.copilotDeviceFlow != nil {
+					m.copilotDeviceFlow.Cancel()
+				}
+				m.showCopilotDeviceFlow = false
+				m.selectedModel = nil
+			case m.showClaudeAuthMethodChooser:
 				m.claudeAuthMethodChooser.SetDefaults()
 				m.showClaudeAuthMethodChooser = false
 				m.keyMap.isClaudeAuthChoiceHelp = false
 				m.keyMap.isClaudeOAuthHelp = false
 				return m, nil
-			}
-			if m.needsAPIKey {
+			case m.needsAPIKey:
 				if m.isAPIKeyValid {
 					return m, nil
 				}
@@ -335,37 +369,40 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 				m.apiKeyValue = ""
 				m.apiKeyInput.Reset()
 				return m, nil
+			default:
+				return m, util.CmdHandler(dialogs.CloseDialogMsg{})
 			}
-			return m, util.CmdHandler(dialogs.CloseDialogMsg{})
 		default:
-			if m.showClaudeAuthMethodChooser {
+			switch {
+			case m.showClaudeAuthMethodChooser:
 				u, cmd := m.claudeAuthMethodChooser.Update(msg)
 				m.claudeAuthMethodChooser = u.(*claude.AuthMethodChooser)
 				return m, cmd
-			} else if m.showClaudeOAuth2 {
+			case m.showClaudeOAuth2:
 				u, cmd := m.claudeOAuth2.Update(msg)
 				m.claudeOAuth2 = u.(*claude.OAuth2)
 				return m, cmd
-			} else if m.needsAPIKey {
+			case m.needsAPIKey:
 				u, cmd := m.apiKeyInput.Update(msg)
 				m.apiKeyInput = u.(*APIKeyInput)
 				return m, cmd
-			} else {
+			default:
 				u, cmd := m.modelList.Update(msg)
 				m.modelList = u
 				return m, cmd
 			}
 		}
 	case tea.PasteMsg:
-		if m.showClaudeOAuth2 {
+		switch {
+		case m.showClaudeOAuth2:
 			u, cmd := m.claudeOAuth2.Update(msg)
 			m.claudeOAuth2 = u.(*claude.OAuth2)
 			return m, cmd
-		} else if m.needsAPIKey {
+		case m.needsAPIKey:
 			u, cmd := m.apiKeyInput.Update(msg)
 			m.apiKeyInput = u.(*APIKeyInput)
 			return m, cmd
-		} else {
+		default:
 			var cmd tea.Cmd
 			m.modelList, cmd = m.modelList.Update(msg)
 			return m, cmd
@@ -377,18 +414,27 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (util.Model, tea.Cmd) {
 			u, cmd = m.hyperDeviceFlow.Update(msg)
 			m.hyperDeviceFlow = u.(*hyper.DeviceFlow)
 		}
+		if m.showCopilotDeviceFlow && m.copilotDeviceFlow != nil {
+			u, cmd = m.copilotDeviceFlow.Update(msg)
+			m.copilotDeviceFlow = u.(*copilot.DeviceFlow)
+		}
 		return m, cmd
 	default:
 		// Pass all other messages to the device flow for spinner animation
-		if m.showHyperDeviceFlow && m.hyperDeviceFlow != nil {
+		switch {
+		case m.showHyperDeviceFlow && m.hyperDeviceFlow != nil:
 			u, cmd := m.hyperDeviceFlow.Update(msg)
 			m.hyperDeviceFlow = u.(*hyper.DeviceFlow)
 			return m, cmd
-		} else if m.showClaudeOAuth2 {
+		case m.showCopilotDeviceFlow && m.copilotDeviceFlow != nil:
+			u, cmd := m.copilotDeviceFlow.Update(msg)
+			m.copilotDeviceFlow = u.(*copilot.DeviceFlow)
+			return m, cmd
+		case m.showClaudeOAuth2:
 			u, cmd := m.claudeOAuth2.Update(msg)
 			m.claudeOAuth2 = u.(*claude.OAuth2)
 			return m, cmd
-		} else {
+		default:
 			u, cmd := m.apiKeyInput.Update(msg)
 			m.apiKeyInput = u.(*APIKeyInput)
 			return m, cmd
@@ -413,9 +459,25 @@ func (m *modelDialogCmp) View() string {
 		)
 		return m.style().Render(content)
 	}
+	if m.showCopilotDeviceFlow && m.copilotDeviceFlow != nil {
+		// Show Hyper device flow
+		m.keyMap.isCopilotDeviceFlow = m.copilotDeviceFlow.State != copilot.DeviceFlowStateUnavailable
+		m.keyMap.isCopilotUnavailable = m.copilotDeviceFlow.State == copilot.DeviceFlowStateUnavailable
+		deviceFlowView := m.copilotDeviceFlow.View()
+		content := lipgloss.JoinVertical(
+			lipgloss.Left,
+			t.S().Base.Padding(0, 1, 1, 1).Render(core.Title("Authenticate with GitHub Copilot", m.width-4)),
+			deviceFlowView,
+			"",
+			t.S().Base.Width(m.width-2).PaddingLeft(1).AlignHorizontal(lipgloss.Left).Render(m.help.View(m.keyMap)),
+		)
+		return m.style().Render(content)
+	}
 
 	// Reset the flags when not showing device flow
 	m.keyMap.isHyperDeviceFlow = false
+	m.keyMap.isCopilotDeviceFlow = false
+	m.keyMap.isCopilotUnavailable = false
 
 	switch {
 	case m.showClaudeAuthMethodChooser:
@@ -471,6 +533,9 @@ func (m *modelDialogCmp) View() string {
 func (m *modelDialogCmp) Cursor() *tea.Cursor {
 	if m.showHyperDeviceFlow && m.hyperDeviceFlow != nil {
 		return m.hyperDeviceFlow.Cursor()
+	}
+	if m.showCopilotDeviceFlow && m.copilotDeviceFlow != nil {
+		return m.copilotDeviceFlow.Cursor()
 	}
 	if m.showClaudeAuthMethodChooser {
 		return nil

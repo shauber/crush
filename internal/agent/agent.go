@@ -186,10 +186,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (*fantasy
 	var wg sync.WaitGroup
 	// Generate title if first message.
 	if len(msgs) == 0 {
+		titleCtx := ctx // Copy to avoid race with ctx reassignment below.
 		wg.Go(func() {
-			sessionLock.Lock()
-			a.generateTitle(ctx, &currentSession, call.Prompt)
-			sessionLock.Unlock()
+			a.generateTitle(titleCtx, call.SessionID, call.Prompt)
 		})
 	}
 
@@ -216,7 +215,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (*fantasy
 	var currentAssistant *message.Message
 	var shouldSummarize bool
 	result, err := agent.Stream(genCtx, fantasy.AgentStreamCall{
-		Prompt:           call.Prompt,
+		Prompt:           message.PromptWithTextAttachments(call.Prompt, call.Attachments),
 		Files:            files,
 		Messages:         history,
 		ProviderOptions:  call.ProviderOptions,
@@ -476,7 +475,17 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (*fantasy
 			link := lipgloss.NewStyle().Hyperlink(url, "id=hyper").Render(url)
 			currentAssistant.AddFinish(message.FinishReasonError, "No credits", "You're out of credits. Add more at "+link)
 		} else if errors.As(err, &providerErr) {
-			currentAssistant.AddFinish(message.FinishReasonError, cmp.Or(stringext.Capitalize(providerErr.Title), defaultTitle), providerErr.Message)
+			if providerErr.Message == "The requested model is not supported." {
+				url := "https://github.com/settings/copilot/features"
+				link := lipgloss.NewStyle().Hyperlink(url, "id=hyper").Render(url)
+				currentAssistant.AddFinish(
+					message.FinishReasonError,
+					"Copilot model not enabled",
+					fmt.Sprintf("%q is not enabled in Copilot. Go to the following page to enable it. Then, wait a minute before trying again. %s", a.largeModel.CatwalkCfg.Name, link),
+				)
+			} else {
+				currentAssistant.AddFinish(message.FinishReasonError, cmp.Or(stringext.Capitalize(providerErr.Title), defaultTitle), providerErr.Message)
+			}
 		} else if errors.As(err, &fantasyErr) {
 			currentAssistant.AddFinish(message.FinishReasonError, cmp.Or(stringext.Capitalize(fantasyErr.Title), defaultTitle), fantasyErr.Message)
 		} else {
@@ -655,11 +664,11 @@ func (a *sessionAgent) getCacheControlOptions() fantasy.ProviderOptions {
 }
 
 func (a *sessionAgent) createUserMessage(ctx context.Context, call SessionAgentCall) (message.Message, error) {
+	parts := []message.ContentPart{message.TextContent{Text: call.Prompt}}
 	var attachmentParts []message.ContentPart
 	for _, attachment := range call.Attachments {
 		attachmentParts = append(attachmentParts, message.BinaryContent{Path: attachment.FilePath, MIMEType: attachment.MimeType, Data: attachment.Content})
 	}
-	parts := []message.ContentPart{message.TextContent{Text: call.Prompt}}
 	parts = append(parts, attachmentParts...)
 	msg, err := a.messages.Create(ctx, call.SessionID, message.CreateMessageParams{
 		Role:  message.User,
@@ -696,6 +705,9 @@ If not, please feel free to ignore. Again do not mention this message to the use
 
 	var files []fantasy.FilePart
 	for _, attachment := range attachments {
+		if attachment.IsText() {
+			continue
+		}
 		files = append(files, fantasy.FilePart{
 			Filename:  attachment.FileName,
 			Data:      attachment.Content,
@@ -728,7 +740,7 @@ func (a *sessionAgent) getSessionMessages(ctx context.Context, session session.S
 	return msgs, nil
 }
 
-func (a *sessionAgent) generateTitle(ctx context.Context, session *session.Session, prompt string) {
+func (a *sessionAgent) generateTitle(ctx context.Context, sessionID string, prompt string) {
 	if prompt == "" {
 		return
 	}
@@ -773,8 +785,7 @@ func (a *sessionAgent) generateTitle(ctx context.Context, session *session.Sessi
 		return
 	}
 
-	session.Title = title
-
+	// Calculate usage and cost.
 	var openrouterCost *float64
 	for _, step := range resp.Steps {
 		stepCost := a.openrouterCost(step.ProviderMetadata)
@@ -787,8 +798,27 @@ func (a *sessionAgent) generateTitle(ctx context.Context, session *session.Sessi
 		}
 	}
 
-	a.updateSessionUsage(a.smallModel, session, resp.TotalUsage, openrouterCost)
-	_, saveErr := a.sessions.Save(ctx, *session)
+	modelConfig := a.smallModel.CatwalkCfg
+	cost := modelConfig.CostPer1MInCached/1e6*float64(resp.TotalUsage.CacheCreationTokens) +
+		modelConfig.CostPer1MOutCached/1e6*float64(resp.TotalUsage.CacheReadTokens) +
+		modelConfig.CostPer1MIn/1e6*float64(resp.TotalUsage.InputTokens) +
+		modelConfig.CostPer1MOut/1e6*float64(resp.TotalUsage.OutputTokens)
+
+	if a.isClaudeCode() {
+		cost = 0
+	}
+
+	// Use override cost if available (e.g., from OpenRouter).
+	if openrouterCost != nil {
+		cost = *openrouterCost
+	}
+
+	promptTokens := resp.TotalUsage.InputTokens + resp.TotalUsage.CacheCreationTokens
+	completionTokens := resp.TotalUsage.OutputTokens + resp.TotalUsage.CacheReadTokens
+
+	// Atomically update only title and usage fields to avoid overriding other
+	// concurrent session updates.
+	saveErr := a.sessions.UpdateTitleAndUsage(ctx, sessionID, title, promptTokens, completionTokens, cost)
 	if saveErr != nil {
 		slog.Error("failed to save session title & usage", "error", saveErr)
 		return

@@ -63,7 +63,8 @@ func (m *ModelListComponent) Init() tea.Cmd {
 		for _, p := range providers {
 			hasAPIKeyEnv := strings.HasPrefix(p.APIKey, "$")
 			isHyper := p.ID == "hyper"
-			if (hasAPIKeyEnv && p.ID != catwalk.InferenceProviderAzure) || isHyper {
+			isCopilot := p.ID == catwalk.InferenceProviderCopilot
+			if (hasAPIKeyEnv && p.ID != catwalk.InferenceProviderAzure) || isHyper || isCopilot {
 				filteredProviders = append(filteredProviders, p)
 			}
 		}
@@ -147,29 +148,7 @@ func (m *ModelListComponent) SetModelType(modelType int) tea.Cmd {
 		if !slices.ContainsFunc(knownProviders, func(p catwalk.Provider) bool { return p.ID == catwalk.InferenceProvider(providerID) }) ||
 			!slices.ContainsFunc(m.providers, func(p catwalk.Provider) bool { return p.ID == catwalk.InferenceProvider(providerID) }) {
 			// Convert config provider to provider.Provider format
-			configProvider := catwalk.Provider{
-				Name:   providerConfig.Name,
-				ID:     catwalk.InferenceProvider(providerID),
-				Models: make([]catwalk.Model, len(providerConfig.Models)),
-			}
-
-			// Convert models
-			for i, model := range providerConfig.Models {
-				configProvider.Models[i] = catwalk.Model{
-					ID:                     model.ID,
-					Name:                   model.Name,
-					CostPer1MIn:            model.CostPer1MIn,
-					CostPer1MOut:           model.CostPer1MOut,
-					CostPer1MInCached:      model.CostPer1MInCached,
-					CostPer1MOutCached:     model.CostPer1MOutCached,
-					ContextWindow:          model.ContextWindow,
-					DefaultMaxTokens:       model.DefaultMaxTokens,
-					CanReason:              model.CanReason,
-					ReasoningLevels:        model.ReasoningLevels,
-					DefaultReasoningEffort: model.DefaultReasoningEffort,
-					SupportsImages:         model.SupportsImages,
-				}
-			}
+			configProvider := providerConfig.ToProvider()
 
 			// Add this unknown provider to the list
 			name := configProvider.Name
