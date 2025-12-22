@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/charmbracelet/crush/internal/api/streaming"
 	"github.com/charmbracelet/crush/internal/app"
 )
 
@@ -14,6 +15,9 @@ func Serve(app *app.App, port int) error {
 
 	// Create handlers with app instance
 	h := &handlers{app: app}
+	
+	// Create SSE handler for streaming
+	sseHandler := streaming.NewSSEHandler()
 
 	// Register routes
 	mux.HandleFunc("POST /sessions", h.createSession)
@@ -24,6 +28,10 @@ func Serve(app *app.App, port int) error {
 	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
 	mux.HandleFunc("GET /sessions/{id}/messages", h.listMessages)
 	mux.HandleFunc("GET /sessions/{id}/stream", h.streamSession)
+	
+	// Streaming endpoints
+	mux.HandleFunc("GET /stream", sseHandler.HandleSSE)
+	mux.HandleFunc("GET /sessions/{id}/events", sseHandler.HandleSSE)
 
 	mux.HandleFunc("POST /sessions/{id}/cancel", h.cancelSession)
 	mux.HandleFunc("GET /sessions/{id}/status", h.sessionStatus)
