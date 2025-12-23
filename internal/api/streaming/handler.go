@@ -2,7 +2,6 @@ package streaming
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -105,7 +104,7 @@ func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	headers.Set("Access-Control-Allow-Headers", "Cache-Control")
 
 	// Create a connected event
-	connectedEvent := NewStreamingEvent(EventConnected, sessionID).
+	connectedEvent, _ := NewStreamingEvent(EventConnected, sessionID).
 		WithPayload(ConnectionEventPayload{
 			Status: "connected",
 		})
@@ -152,7 +151,7 @@ func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	defer heartbeat.Stop()
 
 	// Create heartbeat event
-	heartbeatEvent := NewStreamingEvent(EventHeartbeat, sessionID).
+	heartbeatEvent, _ := NewStreamingEvent(EventHeartbeat, sessionID).
 		WithPayload(map[string]interface{}{
 			"status": "alive",
 		})

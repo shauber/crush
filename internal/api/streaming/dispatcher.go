@@ -11,7 +11,7 @@ type Dispatcher struct {
 	
 	// Mapping to track active session streams
 	sessionStreams map[string]*sessionStream
-	t streamsMutex sync.RWMutex
+	streamsMutex sync.RWMutex
 	
 	// Global sequence counter for event ordering
 	sequenceCounter int64
