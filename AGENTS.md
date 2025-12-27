@@ -286,6 +286,7 @@ CRUSH_PROFILE=true go run .            # Enable pprof
 - Changing database schemas, SQL queries, or migrations
 - Modifying the agent framework, TUI components, or API endpoints
 - Any refactoring or reorganization of existing code
+- Running the server (`crush server`) - this will conflict with the current Crush session and attempt to bind to the same database file
 
 **✅ ALLOWED:**
 - Creating NEW files (config, documentation, temporary files)

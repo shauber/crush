@@ -1,9 +1,13 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/crush/internal/api/streaming"
@@ -54,7 +58,29 @@ func Serve(app *app.App, port int) error {
 		WriteTimeout: 30 * time.Second,
 	}
 
-	return server.ListenAndServe()
+	// Start server in a goroutine
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed to start", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	slog.Info("Server started successfully", "addr", addr)
+
+	// Set up signal handling for graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Wait for interrupt signal
+	<-quit
+	slog.Info("Shutting down server...")
+
+	// Create a context with timeout for graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	return server.Shutdown(ctx)
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
