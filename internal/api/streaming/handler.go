@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// GlobalSSEHandler provides global access to the active SSE handler
+var GlobalSSEHandler *SSEHandler
+
+func init() {
+	GlobalSSEHandler = nil
+}
+
 // SSEHandler handles Server-Sent Events connections
 // It manages client connections and sends events
 
@@ -31,6 +38,10 @@ func NewSSEHandler() *SSEHandler {
 		isShutdown:   false,
 	}
 	go h.run()
+	
+	// Set global handler for server mode streaming
+	GlobalSSEHandler = h
+	
 	return h
 }
 

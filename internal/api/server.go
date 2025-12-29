@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/crush/internal/api/streaming"
 	"github.com/charmbracelet/crush/internal/app"
+	crushstreaming "github.com/charmbracelet/crush/internal/streaming"
 )
 
 func Serve(app *app.App, port int) error {
@@ -19,9 +20,14 @@ func Serve(app *app.App, port int) error {
 
 	// Create handlers with app instance
 	h := &handlers{app: app}
-	
+
 	// Create SSE handler for streaming
 	sseHandler := streaming.NewSSEHandler()
+
+	// Start message subscriber for tool streaming events.
+	// This subscribes to message pubsub and emits SSE events when tools run.
+	msgSubscriber := crushstreaming.NewMessageSubscriber(app.Messages, sseHandler)
+	go msgSubscriber.Start(context.Background())
 
 	// Register routes
 	mux.HandleFunc("POST /sessions", h.createSession)
@@ -32,7 +38,7 @@ func Serve(app *app.App, port int) error {
 	mux.HandleFunc("POST /sessions/{id}/messages", h.sendMessage)
 	mux.HandleFunc("GET /sessions/{id}/messages", h.listMessages)
 	mux.HandleFunc("GET /sessions/{id}/stream", h.streamSession)
-	
+
 	// Streaming endpoints
 	mux.HandleFunc("GET /stream", sseHandler.HandleSSE)
 	mux.HandleFunc("GET /sessions/{id}/events", sseHandler.HandleSSE)
