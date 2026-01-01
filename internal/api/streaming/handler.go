@@ -19,7 +19,7 @@ func init() {
 // It manages client connections and sends events
 
 type SSEHandler struct {
-	clients    map[chan<- *StreamingEvent]struct{}
+	clients      map[chan<- *StreamingEvent]struct{}
 	addClient    chan chan<- *StreamingEvent
 	removeClient chan chan<- *StreamingEvent
 	broadcast    chan *StreamingEvent
@@ -38,10 +38,10 @@ func NewSSEHandler() *SSEHandler {
 		isShutdown:   false,
 	}
 	go h.run()
-	
+
 	// Set global handler for server mode streaming
 	GlobalSSEHandler = h
-	
+
 	return h
 }
 
@@ -51,14 +51,14 @@ func (h *SSEHandler) run() {
 		select {
 		case client := <-h.addClient:
 			h.clients[client] = struct{}{}
-			
+
 		case client := <-h.removeClient:
 			delete(h.clients, client)
 			close(client)
-			
+
 		case event := <-h.broadcast:
 			h.broadcastToClients(event)
-			
+
 		case <-h.shutdown:
 			// Close all client connections
 			for client := range h.clients {
@@ -122,10 +122,10 @@ func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Create a channel for this client
 	client := make(chan *StreamingEvent, 100)
-	
+
 	// Register client
 	h.addClient <- client
-	
+
 	// Ensure client is removed on exit
 	defer func() {
 		h.removeClient <- client
@@ -133,7 +133,7 @@ func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Create a context that cancels when the client disconnects
 	ctx := r.Context()
-	
+
 	// Send the initial connected event
 	eventData, err := json.Marshal(connectedEvent)
 	if err != nil {
@@ -173,19 +173,19 @@ func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			// Client disconnected
 			return
-			
+
 		case event := <-client:
 			if event == nil {
 				// Channel closed
 				return
 			}
-			
+
 			// Marshal event to JSON
 			eventData, err := json.Marshal(event)
 			if err != nil {
 				continue
 			}
-			
+
 			// Write SSE format
 			_, err = fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event.Type, string(eventData))
 			if err != nil {
@@ -193,14 +193,14 @@ func (h *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			writer.Flush()
 			flusher.Flush()
-			
+
 		case <-heartbeat.C:
 			// Send heartbeat
 			eventData, err := json.Marshal(heartbeatEvent)
 			if err != nil {
 				continue
 			}
-			
+
 			_, err = fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", EventHeartbeat, string(eventData))
 			if err != nil {
 				return
@@ -231,18 +231,18 @@ func (h *SSEHandler) BroadcastToSession(event *StreamingEvent) {
 func (h *SSEHandler) GetConnectionCount() int {
 	count := 0
 	temp := make(chan int, 1)
-	
+
 	go func() {
 		h.addClient <- make(chan *StreamingEvent) // Add dummy client to enter select
 		defer func() { h.removeClient <- make(chan *StreamingEvent) }()
-		
+
 		count = 0
 		for range h.clients {
 			count++
 		}
 		temp <- count
 	}()
-	
+
 	select {
 	case result := <-temp:
 		return result

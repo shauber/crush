@@ -42,19 +42,19 @@ const (
 type StreamingEvent struct {
 	// EventType identifies the type of event
 	Type EventType `json:"type"`
-	
+
 	// SessionID identifies which session this event belongs to
 	SessionID string `json:"session_id"`
-	
+
 	// MessageID identifies which message this event is related to (if applicable)
 	MessageID string `json:"message_id,omitempty"`
-	
+
 	// Timestamp when the event was created
 	Timestamp time.Time `json:"timestamp"`
-	
+
 	// Sequence number for ordering events within a stream
 	Sequence int64 `json:"sequence"`
-	
+
 	// Payload contains event-specific data
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
@@ -90,14 +90,14 @@ type ToolEventPayload struct {
 
 // AgentEventPayload for agent execution events
 type AgentEventPayload struct {
-	AgentName   string      `json:"agent_name,omitempty"`
-	Status      string      `json:"status,omitempty"`
-	Thought     string      `json:"thought,omitempty"`
-	Action      string      `json:"action,omitempty"`
-	Result      interface{} `json:"result,omitempty"`
-	Error       string      `json:"error,omitempty"`
-	DurationMs  int64       `json:"duration_ms,omitempty"`
-	AgentID     string      `json:"agent_id,omitempty"`
+	AgentName  string      `json:"agent_name,omitempty"`
+	Status     string      `json:"status,omitempty"`
+	Thought    string      `json:"thought,omitempty"`
+	Action     string      `json:"action,omitempty"`
+	Result     interface{} `json:"result,omitempty"`
+	Error      string      `json:"error,omitempty"`
+	DurationMs int64       `json:"duration_ms,omitempty"`
+	AgentID    string      `json:"agent_id,omitempty"`
 }
 
 // SessionEventPayload for session-related events

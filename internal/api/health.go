@@ -11,13 +11,13 @@ import (
 func HealthHandler(agent agent.SessionAgent) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		response := map[string]interface{}{
 			"status": "ok",
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
-		
+
 		json.NewEncoder(w).Encode(response)
 	}
 }

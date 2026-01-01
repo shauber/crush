@@ -40,7 +40,7 @@ func (h *handlers) streamSession(w http.ResponseWriter, r *http.Request) {
 	// Send initial connection event
 	fmt.Fprintf(w, "event: connected\ndata: {\"session_id\":\"%s\"}\n\n", sessionID)
 	flusher.Flush()
-	
+
 	// Send a heartbeat every 15 seconds to keep Safari connection alive
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -67,11 +67,12 @@ func (h *handlers) streamSession(w http.ResponseWriter, r *http.Request) {
 				eventType = "message_deleted"
 			}
 
+			content := getMessageContent(msg)
 			data, _ := json.Marshal(map[string]interface{}{
 				"type":       eventType,
 				"message_id": msg.ID,
 				"role":       msg.Role,
-				"content":    msg.Content().String(),
+				"content":    content,
 				"created_at": msg.CreatedAt,
 			})
 

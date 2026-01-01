@@ -17,16 +17,16 @@ type handlers struct {
 
 // Response wrapper types for proper JSON serialization
 type sessionResponse struct {
-	ID               string `json:"id"`
-	ParentSessionID  string `json:"parent_session_id,omitempty"`
-	Title            string `json:"title"`
-	MessageCount     int64  `json:"message_count"`
-	PromptTokens     int64  `json:"prompt_tokens,omitempty"`
-	CompletionTokens int64  `json:"completion_tokens,omitempty"`
-	SummaryMessageID string `json:"summary_message_id,omitempty"`
+	ID               string  `json:"id"`
+	ParentSessionID  string  `json:"parent_session_id,omitempty"`
+	Title            string  `json:"title"`
+	MessageCount     int64   `json:"message_count"`
+	PromptTokens     int64   `json:"prompt_tokens,omitempty"`
+	CompletionTokens int64   `json:"completion_tokens,omitempty"`
+	SummaryMessageID string  `json:"summary_message_id,omitempty"`
 	Cost             float64 `json:"cost,omitempty"`
-	CreatedAt        int64  `json:"created_at"`
-	UpdatedAt        int64  `json:"updated_at"`
+	CreatedAt        int64   `json:"created_at"`
+	UpdatedAt        int64   `json:"updated_at"`
 }
 
 type messageResponse struct {
@@ -56,17 +56,42 @@ type setModelRequest struct {
 }
 
 func toMessageResponse(msg message.Message) messageResponse {
+	content := getMessageContent(msg)
 	return messageResponse{
 		ID:               msg.ID,
 		SessionID:        msg.SessionID,
 		Role:             string(msg.Role),
-		Content:          msg.Content().String(),
+		Content:          content,
 		Model:            msg.Model,
 		Provider:         msg.Provider,
 		CreatedAt:        msg.CreatedAt,
 		UpdatedAt:        msg.UpdatedAt,
 		IsSummaryMessage: msg.IsSummaryMessage,
 	}
+}
+
+// getMessageContent extracts the appropriate content from a message based on its role.
+// For tool role messages, it serializes the tool results. For all other roles, it returns text content.
+func getMessageContent(msg message.Message) string {
+	if msg.Role == message.Tool {
+		// For tool role messages, serialize tool results as JSON
+		toolResults := msg.ToolResults()
+		if len(toolResults) == 0 {
+			return ""
+		}
+		// If there's only one tool result, return its content directly
+		if len(toolResults) == 1 {
+			return toolResults[0].Content
+		}
+		// For multiple tool results, serialize as JSON array
+		data, err := json.Marshal(toolResults)
+		if err != nil {
+			return ""
+		}
+		return string(data)
+	}
+	// For all other roles, return text content
+	return msg.Content().String()
 }
 
 func (h *handlers) createSession(w http.ResponseWriter, r *http.Request) {

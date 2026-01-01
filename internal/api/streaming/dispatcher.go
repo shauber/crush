@@ -8,11 +8,11 @@ import (
 // Dispatcher manages event distribution across SSE handlers and other consumers
 type Dispatcher struct {
 	sseHandler *SSEHandler
-	
+
 	// Mapping to track active session streams
 	sessionStreams map[string]*sessionStream
-	streamsMutex sync.RWMutex
-	
+	streamsMutex   sync.RWMutex
+
 	// Global sequence counter for event ordering
 	sequenceCounter int64
 }
@@ -21,24 +21,24 @@ type Dispatcher struct {
 type sessionStream struct {
 	sessionID string
 	lastEvent int64
-	events   map[string]*StreamingEvent // MessageID -> latest event
-	mutex   sync.RWMutex
+	events    map[string]*StreamingEvent // MessageID -> latest event
+	mutex     sync.RWMutex
 }
 
 // EventDispatcher provides public interface for event emission
 type EventDispatcher interface {
 	// Emit sends an event to all connected clients for the session
 	Emit(event *StreamingEvent)
-	
+
 	// EmitToSession sends an event to a specific session
 	EmitToSession(sessionID string, event *StreamingEvent)
-	
+
 	// EmitWithSource sends an event with source information
 	EmitWithSource(event *StreamingEvent, source string)
-	
+
 	// GetLastEvent returns the last event for a message in a session
 	GetLastEvent(sessionID, messageID string) *StreamingEvent
-	
+
 	// GetStreamCount returns the number of active stream connections
 	GetStreamCount() int
 }
@@ -77,12 +77,12 @@ func (d *Dispatcher) getOrCreateSessionStream(sessionID string) *sessionStream {
 
 	d.streamsMutex.Lock()
 	defer d.streamsMutex.Unlock()
-	
+
 	// Double-check after lock
 	if stream, exists := d.sessionStreams[sessionID]; exists {
 		return stream
 	}
-	
+
 	stream := &sessionStream{
 		sessionID: sessionID,
 		events:    make(map[string]*StreamingEvent),
@@ -101,16 +101,16 @@ func (d *Dispatcher) EmitToSession(sessionID string, event *StreamingEvent) {
 	if event.SessionID == "" {
 		event.SessionID = sessionID
 	}
-	
+
 	// Ensure sequence is set
 	if event.Sequence == 0 {
 		event.Sequence = d.getNextSequence()
 	}
-	
+
 	// Store event for the session
 	stream := d.getOrCreateSessionStream(sessionID)
 	stream.addEvent(event)
-	
+
 	// Broadcast via SSE
 	d.sseHandler.Broadcast(event)
 }
@@ -127,9 +127,9 @@ func (d *Dispatcher) EmitWithSource(event *StreamingEvent, source string) {
 func (s *sessionStream) addEvent(event *StreamingEvent) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	
+
 	s.lastEvent = event.Sequence
-	
+
 	// Store by message ID if provided
 	if event.MessageID != "" {
 		s.events[event.MessageID] = event
@@ -141,11 +141,11 @@ func (d *Dispatcher) GetLastEvent(sessionID, messageID string) *StreamingEvent {
 	d.streamsMutex.RLock()
 	stream, exists := d.sessionStreams[sessionID]
 	d.streamsMutex.RUnlock()
-	
+
 	if !exists {
 		return nil
 	}
-	
+
 	return stream.getEvent(messageID)
 }
 
@@ -153,7 +153,7 @@ func (d *Dispatcher) GetLastEvent(sessionID, messageID string) *StreamingEvent {
 func (s *sessionStream) getEvent(messageID string) *StreamingEvent {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	
+
 	return s.events[messageID]
 }
 
@@ -173,16 +173,16 @@ func (d *Dispatcher) GetSessionCount() int {
 func (d *Dispatcher) CleanupSession(sessionID string) {
 	d.streamsMutex.Lock()
 	defer d.streamsMutex.Unlock()
-	
+
 	if stream, exists := d.sessionStreams[sessionID]; exists {
 		stream.mutex.Lock()
 		defer stream.mutex.Unlock()
-		
+
 		// Clear all events
 		for k := range stream.events {
 			delete(stream.events, k)
 		}
-		
+
 		delete(d.sessionStreams, sessionID)
 	}
 }
@@ -195,10 +195,10 @@ func (d *Dispatcher) GetSSEHandler() *SSEHandler {
 // Shutdown gracefully shuts down the dispatcher
 func (d *Dispatcher) Shutdown() {
 	d.sseHandler.Shutdown()
-	
+
 	d.streamsMutex.Lock()
 	defer d.streamsMutex.Unlock()
-	
+
 	// Clear all session streams
 	for sessionID := range d.sessionStreams {
 		if stream := d.sessionStreams[sessionID]; stream != nil {
@@ -209,7 +209,7 @@ func (d *Dispatcher) Shutdown() {
 			stream.mutex.Unlock()
 		}
 	}
-	
+
 	// Clear the map
 	for k := range d.sessionStreams {
 		delete(d.sessionStreams, k)
@@ -221,14 +221,14 @@ func (d *Dispatcher) HealthCheck() map[string]interface{} {
 	d.streamsMutex.RLock()
 	sessionCount := len(d.sessionStreams)
 	d.streamsMutex.RUnlock()
-	
+
 	connectionCount := d.GetStreamCount()
-	
+
 	return map[string]interface{}{
 		"session_streams":   sessionCount,
 		"sse_connections":   connectionCount,
 		"total_events_sent": atomic.LoadInt64(&d.sequenceCounter),
-		"status":           "healthy",
-		"sse_handler":      "running",
+		"status":            "healthy",
+		"sse_handler":       "running",
 	}
 }
