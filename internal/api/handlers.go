@@ -327,3 +327,16 @@ func (h *handlers) setModel(w http.ResponseWriter, r *http.Request) {
 		"model":   newModel,
 	})
 }
+
+// getConfig returns the full application configuration with optional schema metadata.
+func (h *handlers) getConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := h.app.Config()
+
+	// Check for include_schema query parameter
+	includeSchema := r.URL.Query().Get("include_schema") == "true"
+
+	// Convert to API response with redaction
+	resp := ToConfigResponse(cfg, includeSchema)
+
+	respondJSON(w, http.StatusOK, resp)
+}

@@ -51,6 +51,14 @@ func Serve(app *app.App, port int) error {
 	mux.HandleFunc("GET /providers", h.getProviders)
 	mux.HandleFunc("POST /models", h.setModel)
 
+	// Configuration endpoints
+	mux.HandleFunc("GET /config", h.getConfig)
+
+	// Health check - simple handler
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
 	// Wrap with CORS and logging
 	handler := corsMiddleware(loggingMiddleware(mux))
 
