@@ -53,6 +53,8 @@ func Serve(app *app.App, port int) error {
 
 	// Configuration endpoints
 	mux.HandleFunc("GET /config", h.getConfig)
+	mux.HandleFunc("PUT /config", h.updateConfig)
+	mux.HandleFunc("PUT /config/field", h.updateConfigField)
 
 	// Health check - simple handler
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +102,7 @@ func Serve(app *app.App, port int) error {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 		if r.Method == "OPTIONS" {

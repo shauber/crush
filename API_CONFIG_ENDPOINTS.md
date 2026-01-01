@@ -4,7 +4,7 @@ This document describes the configuration management endpoints exposed by the Cr
 
 ## Overview
 
-The configuration API provides read access to the application's configuration, including providers, tools, UI preferences, and model settings. All sensitive data (e.g., API keys) is automatically redacted before being sent to clients.
+The configuration API provides read and write access to the application's configuration, including providers, tools, UI preferences, and model settings. All sensitive data (e.g., API keys) is automatically redacted when reading configuration.
 
 ## Endpoints
 
@@ -222,6 +222,287 @@ curl -s http://localhost:8080/config | jq '.models.large'
 curl -s http://localhost:8080/config | jq '.providers[] | select(.id == "openai") | .enabled'
 ```
 
+---
+
+### PUT /config
+
+Updates multiple configuration sections atomically. Only the provided fields will be updated; all others remain unchanged (partial update).
+
+#### Request Body
+
+**Content-Type:** application/json
+
+```json
+{
+  "models": {
+    "large": {
+      "model": "gpt-4o",
+      "provider": "openai",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "small": {
+      "model": "claude-3-haiku",
+      "provider": "anthropic"
+    }
+  },
+  "tools": {
+    "ls": {
+      "max_depth": 10,
+      "max_items": 100
+    },
+    "disabled_tools": ["sourcegraph"]
+  },
+  "ui": {
+    "compact_mode": true,
+    "diff_mode": "split"
+  },
+  "options": {
+    "context_paths": [".cursorrules", "CRUSH.md"],
+    "disable_metrics": false
+  },
+  "providers": {
+    "updates": [
+      {
+        "id": "openai",
+        "enabled": true,
+        "base_url": "https://api.openai.com/v1"
+      }
+    ]
+  }
+}
+```
+
+**Note:** All fields are optional. Only include the sections you want to update.
+
+#### Response
+
+**Status Code:** 200 OK
+
+**Content-Type:** application/json
+
+Returns the full updated configuration (same format as `GET /config`).
+
+#### Validation Rules
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| `models.*.model` | string | Required when updating model |
+| `models.*.provider` | string | Required when updating model |
+| `models.*.temperature` | number | 0.0 - 1.0 |
+| `models.*.max_tokens` | number | 0 - 200000 |
+| `models.*.reasoning_effort` | string | "low", "medium", "high" |
+| `tools.ls.max_depth` | number | >= 0 |
+| `tools.ls.max_items` | number | >= 0 |
+| `ui.theme` | string | "dark", "light" |
+| `ui.diff_mode` | string | "unified", "split" |
+| `ui.compact_mode` | boolean | - |
+| `providers.*.id` | string | Required for provider updates |
+
+#### Error Responses
+
+**400 Bad Request** - Validation failed
+
+```json
+{
+  "error": "Validation failed: temperature must be between 0 and 1"
+}
+```
+
+**500 Internal Server Error** - Failed to apply updates
+
+```json
+{
+  "error": "Failed to apply config update: provider not found"
+}
+```
+
+#### Examples
+
+**Update Model Configuration:**
+
+```bash
+curl -X PUT http://localhost:8080/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "models": {
+      "large": {
+        "model": "gpt-4o",
+        "provider": "openai",
+        "temperature": 0.8
+      }
+    }
+  }'
+```
+
+**Update Multiple Sections:**
+
+```bash
+curl -X PUT http://localhost:8080/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "models": {
+      "large": {
+        "model": "claude-3.5-sonnet",
+        "provider": "anthropic"
+      }
+    },
+    "ui": {
+      "compact_mode": true,
+      "diff_mode": "split"
+    },
+    "tools": {
+      "ls": {
+        "max_depth": 15
+      }
+    }
+  }'
+```
+
+**Update UI Preferences Only:**
+
+```bash
+curl -X PUT http://localhost:8080/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ui": {
+      "compact_mode": false,
+      "diff_mode": "unified"
+    }
+  }'
+```
+
+---
+
+### PUT /config/field
+
+Updates a single configuration field using dot notation. More efficient than `PUT /config` for single-field updates.
+
+#### Request Body
+
+**Content-Type:** application/json
+
+```json
+{
+  "path": "ui.compact_mode",
+  "value": true
+}
+```
+
+#### Supported Field Paths
+
+**Models:**
+- `models.large.model`
+- `models.large.provider`
+- `models.large.max_tokens`
+- `models.large.temperature`
+- `models.large.reasoning_effort`
+- `models.large.think`
+- `models.small.*` (same fields)
+
+**Tools:**
+- `tools.ls.max_depth`
+- `tools.ls.max_items`
+- `tools.disabled_tools`
+
+**UI:**
+- `ui.theme`
+- `ui.compact_mode`
+- `ui.diff_mode`
+
+**Options:**
+- `options.context_paths`
+- `options.skills_paths`
+- `options.disable_auto_summarize`
+- `options.disable_metrics`
+- `options.debug`
+
+#### Response
+
+**Status Code:** 200 OK
+
+**Content-Type:** application/json
+
+```json
+{
+  "message": "Field updated successfully",
+  "path": "ui.compact_mode",
+  "value": true
+}
+```
+
+#### Error Responses
+
+**400 Bad Request** - Invalid path or value
+
+```json
+{
+  "error": "Validation failed: unknown field path: invalid.path"
+}
+```
+
+```json
+{
+  "error": "Validation failed: invalid value for ui.theme: must be 'dark' or 'light'"
+}
+```
+
+**500 Internal Server Error** - Failed to persist update
+
+```json
+{
+  "error": "Failed to apply field update: failed to persist config"
+}
+```
+
+#### Examples
+
+**Update Compact Mode:**
+
+```bash
+curl -X PUT http://localhost:8080/config/field \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "ui.compact_mode",
+    "value": true
+  }'
+```
+
+**Update Ls Max Depth:**
+
+```bash
+curl -X PUT http://localhost:8080/config/field \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "tools.ls.max_depth",
+    "value": 20
+  }'
+```
+
+**Update Context Paths:**
+
+```bash
+curl -X PUT http://localhost:8080/config/field \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "options.context_paths",
+    "value": [".cursorrules", "CRUSH.md", "docs/AI.md"]
+  }'
+```
+
+**Update Model Temperature:**
+
+```bash
+curl -X PUT http://localhost:8080/config/field \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "models.large.temperature",
+    "value": 0.9
+  }'
+```
+
+---
+
 ## Security Considerations
 
 ### API Key Redaction
@@ -350,8 +631,83 @@ Occurs when the server cannot read or process the configuration. Check server lo
 
 - `GET /providers` - List providers without full config (lightweight)
 - `GET /models` - Get model selection without full config
-- `PUT /config` (Phase A Day 2) - Update configuration
-- `PUT /config/field` (Phase A Day 2) - Update individual fields
+- `POST /models` - Set model (alternative to PUT /config for models)
+- `GET /settings` (Phase A Day 3) - Settings-specific endpoint
+- `PUT /settings/{key}` (Phase A Day 3) - Update individual settings
+
+## Persistence
+
+All configuration updates are automatically persisted to disk in the application's data directory. Changes survive application restarts.
+
+**Persistence Details:**
+- Configuration stored in: `~/.config/crush/crush.json` (or configured data directory)
+- Atomic writes prevent corruption
+- Changes are applied in-memory first, then persisted
+- Failed persistence rolls back in-memory changes
+
+## Change Events
+
+Configuration updates trigger events for real-time synchronization:
+
+**Event:** `config_updated`
+- Emitted via SSE after successful config updates
+- Contains the updated configuration section
+- Allows web clients to stay synchronized
+- *Note: SSE event emission is prepared for Phase C implementation*
+
+## Validation
+
+All configuration updates are validated before being applied:
+
+1. **Type Checking**: Values must match expected types (string, number, boolean, array)
+2. **Range Validation**: Numeric values must be within allowed ranges
+3. **Enum Validation**: String fields with limited options are checked against allowed values
+4. **Required Fields**: Required fields must be present when updating objects
+5. **Consistency**: Related fields are validated together (e.g., model + provider)
+
+**Validation Errors Return 400 Bad Request** with detailed error messages.
+
+## Best Practices
+
+### Bulk vs. Field Updates
+
+**Use `PUT /config` when:**
+- Updating multiple related fields
+- Applying a configuration template
+- Making coordinated changes across sections
+- Want to receive the full updated config in response
+
+**Use `PUT /config/field` when:**
+- Updating a single specific field
+- Building a settings UI with individual toggles
+- Want minimal request/response payload
+- Only care about confirming that specific field update
+
+### Partial Updates
+
+Both `PUT /config` and `PUT /config/field` perform partial updates:
+- Only specified fields are changed
+- Unspecified fields retain their current values
+- null values are generally ignored (field-specific behavior)
+
+### Error Handling
+
+Always check HTTP status codes:
+- **200 OK**: Update successful
+- **400 Bad Request**: Validation failed, check error message
+- **500 Internal Server Error**: Server-side issue, may need retry
+
+Parse error messages for specific validation failures:
+```bash
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "error": "Validation failed: models validation failed: large model: temperature must be between 0 and 1"
+}
+```
+
+## Related Endpoints
 
 ## CLI Parity
 

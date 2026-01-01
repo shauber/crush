@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -339,4 +340,65 @@ func (h *handlers) getConfig(w http.ResponseWriter, r *http.Request) {
 	resp := ToConfigResponse(cfg, includeSchema)
 
 	respondJSON(w, http.StatusOK, resp)
+}
+
+// updateConfig handles bulk configuration updates.
+func (h *handlers) updateConfig(w http.ResponseWriter, r *http.Request) {
+	var req ConfigUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Validate the update request
+	if err := ValidateConfigUpdate(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	cfg := h.app.Config()
+
+	// Apply the configuration updates
+	if err := ApplyConfigUpdate(cfg, &req); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to apply config update: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: Emit SSE event for config_updated (Phase C)
+
+	// Return the updated configuration
+	resp := ToConfigResponse(cfg, false)
+	respondJSON(w, http.StatusOK, resp)
+}
+
+// updateConfigField handles single field configuration updates.
+func (h *handlers) updateConfigField(w http.ResponseWriter, r *http.Request) {
+	var req FieldUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Validate the field update request
+	if err := ValidateFieldUpdate(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	cfg := h.app.Config()
+
+	// Apply the field update
+	if err := ApplyFieldUpdate(cfg, &req); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to apply field update: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: Emit SSE event for config_updated (Phase C)
+
+	// Return success response
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Field updated successfully",
+		"path":    req.Path,
+		"value":   req.Value,
+	})
 }
