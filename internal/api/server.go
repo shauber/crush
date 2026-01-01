@@ -56,6 +56,13 @@ func Serve(app *app.App, port int) error {
 	mux.HandleFunc("PUT /config", h.updateConfig)
 	mux.HandleFunc("PUT /config/field", h.updateConfigField)
 
+	// Settings endpoints
+	mux.HandleFunc("GET /settings", h.getSettings)
+	mux.HandleFunc("GET /settings/schema", h.getSettingsSchema)
+	mux.HandleFunc("GET /settings/{key}/schema", h.getSettingsSchema)
+	mux.HandleFunc("PUT /settings", h.updateSettings)
+	mux.HandleFunc("PUT /settings/{key}", h.updateSetting)
+
 	// Health check - simple handler
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})

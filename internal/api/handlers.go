@@ -402,3 +402,88 @@ func (h *handlers) updateConfigField(w http.ResponseWriter, r *http.Request) {
 		"value":   req.Value,
 	})
 }
+
+// getSettings returns all user-facing settings.
+func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
+	cfg := h.app.Config()
+	resp := ToSettingsResponse(cfg)
+	respondJSON(w, http.StatusOK, resp)
+}
+
+// getSettingsSchema returns schemas for all settings or a specific setting.
+func (h *handlers) getSettingsSchema(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+
+	if key != "" {
+		// Return schema for specific setting
+		schema := GetSettingSchema(key)
+		if schema == nil {
+			http.Error(w, fmt.Sprintf("Setting not found: %s", key), http.StatusNotFound)
+			return
+		}
+		respondJSON(w, http.StatusOK, schema)
+	} else {
+		// Return all schemas
+		schemas := GetAllSettingsSchemas()
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"settings": schemas,
+		})
+	}
+}
+
+// updateSettings handles bulk settings updates.
+func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
+	var req SettingsUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	cfg := h.app.Config()
+
+	// Apply the settings updates
+	if err := ApplySettingsUpdate(cfg, &req); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to apply settings update: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: Emit SSE event for settings_updated (Phase C)
+
+	// Return the updated settings
+	resp := ToSettingsResponse(cfg)
+	respondJSON(w, http.StatusOK, resp)
+}
+
+// updateSetting handles single setting updates.
+func (h *handlers) updateSetting(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+
+	var req SettingUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Validate the setting value
+	if err := ValidateSettingValue(key, req.Value); err != nil {
+		http.Error(w, fmt.Sprintf("Validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	cfg := h.app.Config()
+
+	// Apply the setting update
+	if err := ApplySettingUpdate(cfg, key, req.Value); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to apply setting update: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: Emit SSE event for setting_updated (Phase C)
+
+	// Return success response
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Setting updated successfully",
+		"key":     key,
+		"value":   req.Value,
+	})
+}
