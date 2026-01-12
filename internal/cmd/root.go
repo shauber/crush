@@ -34,6 +34,7 @@ import (
 func init() {
 	rootCmd.PersistentFlags().StringP("cwd", "c", "", "Current working directory")
 	rootCmd.PersistentFlags().StringP("data-dir", "D", "", "Custom crush data directory")
+	rootCmd.PersistentFlags().StringP("template", "t", "", "Agent prompt template (coder, task)")
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug")
 	rootCmd.Flags().BoolP("help", "h", false, "Help")
 	rootCmd.Flags().BoolP("yolo", "y", false, "Automatically accept all permissions (dangerous mode)")
@@ -67,11 +68,17 @@ crush -d -c /path/to/project
 # Run with custom data directory
 crush -D /path/to/custom/.crush
 
+# Use a different prompt template
+crush --template task
+
 # Print version
 crush -v
 
 # Run a single non-interactive prompt
 crush run "Explain the use of context in Go"
+
+# Run with a specific template
+crush run --template task "Create a plan for implementing authentication"
 
 # Run in dangerous mode (auto-accept all permissions)
 crush -y
@@ -179,6 +186,7 @@ func setupApp(cmd *cobra.Command) (*app.App, error) {
 	debug, _ := cmd.Flags().GetBool("debug")
 	yolo, _ := cmd.Flags().GetBool("yolo")
 	dataDir, _ := cmd.Flags().GetString("data-dir")
+	template, _ := cmd.Flags().GetString("template")
 	ctx := cmd.Context()
 
 	cwd, err := ResolveCwd(cmd)
@@ -195,6 +203,16 @@ func setupApp(cmd *cobra.Command) (*app.App, error) {
 		cfg.Permissions = &config.Permissions{}
 	}
 	cfg.Permissions.SkipRequests = yolo
+
+	// Override agent template from CLI flag if provided.
+	if template != "" {
+		if cfg.Agents == nil {
+			cfg.Agents = make(map[string]config.Agent)
+		}
+		coderAgent := cfg.Agents[config.AgentCoder]
+		coderAgent.PromptTemplate = template
+		cfg.Agents[config.AgentCoder] = coderAgent
+	}
 
 	if err := createDotCrushDir(cfg.Options.DataDirectory); err != nil {
 		return nil, err

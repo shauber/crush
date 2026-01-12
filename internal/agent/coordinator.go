@@ -98,10 +98,11 @@ func NewCoordinator(
 		return nil, errors.New("coder agent not configured")
 	}
 
-	// TODO: make this dynamic when we support multiple agents
-	prompt, err := coderPrompt(prompt.WithWorkingDir(c.cfg.WorkingDir()))
+	// Determine which prompt template to use (default to "coder" if not specified).
+	templateID := cmp.Or(agentCfg.PromptTemplate, "coder")
+	prompt, err := GetPromptByID(templateID, prompt.WithWorkingDir(c.cfg.WorkingDir()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load prompt template %q: %w", templateID, err)
 	}
 
 	agent, err := c.buildAgent(ctx, prompt, agentCfg, false)
