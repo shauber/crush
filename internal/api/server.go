@@ -63,6 +63,9 @@ func Serve(app *app.App, port int) error {
 	mux.HandleFunc("PUT /settings", h.updateSettings)
 	mux.HandleFunc("PUT /settings/{key}", h.updateSetting)
 
+	// Template endpoints
+	mux.HandleFunc("GET /templates", h.listTemplates)
+
 	// Health check - simple handler
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})

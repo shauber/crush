@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/charmbracelet/crush/internal/agent"
 	"github.com/charmbracelet/crush/internal/app"
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/message"
@@ -485,5 +486,13 @@ func (h *handlers) updateSetting(w http.ResponseWriter, r *http.Request) {
 		"message": "Setting updated successfully",
 		"key":     key,
 		"value":   req.Value,
+	})
+}
+
+// listTemplates returns all available prompt templates.
+func (h *handlers) listTemplates(w http.ResponseWriter, r *http.Request) {
+	templates := agent.AvailableTemplates()
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"templates": templates,
 	})
 }
