@@ -26,6 +26,11 @@ func AvailableTemplates() []TemplateInfo {
 			Name:        "Task",
 			Description: "Specialized agent for executing specific tasks",
 		},
+		{
+			ID:          "tachikoma",
+			Name:        "Tachikoma",
+			Description: "Adorable but deadly security expert - cybersecurity specialist with APT threat focus",
+		},
 	}
 }
 
@@ -36,7 +41,9 @@ func GetPromptByID(id string, opts ...prompt.Option) (*prompt.Prompt, error) {
 		return coderPrompt(opts...)
 	case "task":
 		return taskPrompt(opts...)
+	case "tachikoma":
+		return tachikomaPrompt(opts...)
 	default:
-		return nil, fmt.Errorf("unknown template ID: %s (available: coder, task)", id)
+		return nil, fmt.Errorf("unknown template ID: %s (available: coder, task, tachikoma)", id)
 	}
 }

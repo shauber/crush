@@ -34,7 +34,7 @@ import (
 func init() {
 	rootCmd.PersistentFlags().StringP("cwd", "c", "", "Current working directory")
 	rootCmd.PersistentFlags().StringP("data-dir", "D", "", "Custom crush data directory")
-	rootCmd.PersistentFlags().StringP("template", "t", "", "Agent prompt template (coder, task)")
+	rootCmd.PersistentFlags().StringP("template", "t", "", "Agent prompt template (coder, task, tachikoma)")
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug")
 	rootCmd.Flags().BoolP("help", "h", false, "Help")
 	rootCmd.Flags().BoolP("yolo", "y", false, "Automatically accept all permissions (dangerous mode)")

@@ -326,7 +326,7 @@ type Agent struct {
 	Model SelectedModelType `json:"model" jsonschema:"required,description=The model type to use for this agent,enum=large,enum=small,default=large"`
 
 	// The prompt template to use for this agent.
-	PromptTemplate string `json:"prompt_template,omitempty" jsonschema:"description=The prompt template to use for this agent,enum=coder,enum=task,default=coder"`
+	PromptTemplate string `json:"prompt_template,omitempty" jsonschema:"description=The prompt template to use for this agent,enum=coder,enum=task,enum=tachikoma,default=coder"`
 
 	// The available tools for the agent
 	//  if this is nil, all tools are available
